@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Tactics {
     // high defensive line = more pressure but more dangerous if press fails
     pub defense_line: u8,
@@ -17,6 +18,7 @@ pub struct Tactics {
     pub pass_range: u8,
 }
 
+#[derive(Clone)]
 pub enum Width {
     Central,
     Left,
