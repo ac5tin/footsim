@@ -132,7 +132,13 @@ impl<'a> Game<'a> {
                 | position::Position::AttackingMidfield => 1.5,
                 _ => 1.0,
             };
-            players_score += p.passing as f32 * player_score_multiplier * 0.01;
+            players_score += p.passing as f32
+                + (p.fitness as f32 * 0.5)
+                + (p.stamina as f32 / squad.tactics.defense_line as f32 * 0.5)
+                    * (player_score_multiplier
+                        * (1.0 + p.form as f32 * 0.01)
+                        * (p.morale as f32 * 0.01)
+                        * 0.01);
             // players_score range: 0.007 -> 3.82
         }
         // tact_score * formation_score
