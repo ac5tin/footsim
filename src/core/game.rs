@@ -35,10 +35,11 @@ impl<'a> Game<'a> {
     fn play_half(&self) {
         // calculate possession of each team
         let (home_poss, away_poss) = self.get_possession();
-        // based on possession calculate shots
-        // calculate corners
         // calculate fouls based on possession
         // based on fouls calculate freekicks and yellow cards and red cards
+        // modify posession based on red carads
+        // based on possession calculate shots
+        // calculate corners
         // calculate freekicks
         // based on shots and corners and freekicks calculate shots on target
         // based on shots on target calculate goals
@@ -133,6 +134,7 @@ impl<'a> Game<'a> {
                 _ => 1.0,
             };
             players_score += p.passing as f32
+                + (p.technique as f32 * 0.75)
                 + (p.fitness as f32 * 0.5)
                 + (p.stamina as f32 / squad.tactics.defense_line as f32 * 0.5)
                     * (player_score_multiplier
