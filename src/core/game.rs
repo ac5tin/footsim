@@ -77,8 +77,8 @@ impl<'a> Game<'a> {
             + 1.0;
 
         let tact_score = pressure
-            + (((u8::MAX - squad.tactics.build_up_speed + 1)
-                * (u8::MAX - squad.tactics.pass_range + 1)) as f32
+            + (((u8::MAX - squad.tactics.build_up_speed + 1) as f32
+                * (u8::MAX - squad.tactics.pass_range + 1) as f32)
                 + 1.0)
                 * 0.01;
         // tact range: 1.2 -> 23084.97
