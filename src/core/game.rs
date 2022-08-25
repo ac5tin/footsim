@@ -1,4 +1,4 @@
-use super::{position, squad, style};
+use super::{player, position, squad, style};
 
 pub struct Game<'a> {
     home: squad::Squad<'a>,
@@ -16,8 +16,8 @@ pub struct GameStats {
     freekicks: u8,
     corners: u8,
     fouls: u8,
-    yellow_cards: u8,
-    red_cards: u8,
+    yellow_cards: Vec<u32>,
+    red_cards: Vec<u32>,
 }
 
 impl<'a> Game<'a> {
@@ -30,12 +30,18 @@ impl<'a> Game<'a> {
         }
     }
 
-    pub fn play(&self) {}
+    pub fn play(&mut self) {
+        self.play_half();
+    }
 
-    fn play_half(&self) {
+    fn play_half(&mut self) {
         // calculate possession of each team
         let (home_poss, away_poss) = self.get_possession();
+        self.home_stats.possession = home_poss;
+        self.away_stats.possession = away_poss;
         // calculate fouls based on possession
+        let home_fouls = self.get_fouls(&self.home, &self.home_stats);
+        let away_fouls = self.get_fouls(&self.away, &self.away_stats);
         // based on fouls calculate freekicks and yellow cards and red cards
         // modify posession based on red carads
         // based on possession calculate shots
@@ -67,6 +73,35 @@ impl<'a> Game<'a> {
         let total = home_score + away_score;
 
         (home_score / total, away_score / total)
+    }
+
+    /// return fouls, yellow and red cards for each team
+    /// calculated based on:
+    /// - stamina
+    /// - decision making
+    /// - tactics
+    /// - possession
+    /// - existing cards
+    ///
+    fn get_fouls(
+        &self,
+        team: &squad::Squad,
+        stats: &GameStats,
+    ) -> (u8, Vec<&player::Player>, Vec<&player::Player>) {
+        let mut fouls: f32 = 0.0;
+        let mut yellow_cards: Vec<&player::Player> = Vec::new();
+        let mut red_cards: Vec<&player::Player> = Vec::new();
+        for &player in team.players.iter() {
+            // less stamina = more easily tired = more chance to commit a foul
+            let mut player_foul: f32 = 0.0;
+            player_foul += u8::MAX as f32 / player.stamina as f32 * 0.1;
+            player_foul += u8::MAX as f32 / player.decision_making as f32 * 0.4;
+            player_foul += team.tactics.aggression as f32 / player.tackling as f32 * 0.1;
+            // yellow_card rate
+            // red card rate
+        }
+        fouls *= stats.possession;
+        (fouls.round() as u8, yellow_cards, red_cards)
     }
 
     fn get_team_poss_score(&self, squad: &squad::Squad) -> f32 {
