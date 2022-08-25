@@ -74,8 +74,8 @@ impl<'a> Game<'a> {
     fn get_possession(&self) -> (f32, f32) {
         // (tactics + formation + player playstyle) * tactics success rate * quality of players * home adv
         // home team
-        let home_score = self.get_team_poss_score(&self.home) * 1.1;
-        let away_score = self.get_team_poss_score(&self.away);
+        let home_score = self.get_team_poss_score(&self.home, &self.home_stats) * 1.1;
+        let away_score = self.get_team_poss_score(&self.away, &self.away_stats);
 
         let total = home_score + away_score;
 
@@ -94,7 +94,11 @@ impl<'a> Game<'a> {
         let mut fouls: f32 = 0.0;
         let mut yellow_cards: Vec<u32> = Vec::new();
         let mut red_cards: Vec<u32> = Vec::new();
-        for &player in team.players.iter() {
+        for &player in team
+            .players
+            .iter()
+            .filter(|p| !stats.red_cards.contains(&p.id))
+        {
             // less stamina = more easily tired = more chance to commit a foul
             let mut player_foul: f32 = 0.0;
             player_foul += u8::MAX as f32 / player.stamina as f32 * 0.1;
@@ -115,7 +119,7 @@ impl<'a> Game<'a> {
         (fouls.round() as u8, yellow_cards, red_cards)
     }
 
-    fn get_team_poss_score(&self, squad: &squad::Squad) -> f32 {
+    fn get_team_poss_score(&self, squad: &squad::Squad, stats: &GameStats) -> f32 {
         // --- tactics: pressure, buildup, ball retention, pass_range ---
         let pressure = squad.tactics.defense_line as f32
             * (u8::MAX - squad.tactics.compactness + 1) as f32
@@ -133,7 +137,11 @@ impl<'a> Game<'a> {
         let mut formation_score = 0.0;
 
         let mut players_score = 0.0;
-        for &p in squad.players.iter() {
+        for &p in squad
+            .players
+            .iter()
+            .filter(|p| !stats.red_cards.contains(&p.id))
+        {
             let pos_score = match p.position {
                 position::Position::DefensiveMidfield
                 | position::Position::LeftMidfield
