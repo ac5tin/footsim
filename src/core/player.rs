@@ -27,6 +27,7 @@ pub struct Player {
     pub defensive_positioning: u8,
     // attacking
     pub shooting: u8,
+    pub long_shots: u8,
     pub attack_positioning: u8,
     // position
     pub position: position::Position,
@@ -57,6 +58,7 @@ impl Player {
             goalkeeping: 0,
             defensive_positioning: 0,
             shooting: 0,
+            long_shots: 0,
             attack_positioning: 0,
             position: position::Position::Goalkeeper,
             playstyle: style::PlayStyle::Default,
