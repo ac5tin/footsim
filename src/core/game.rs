@@ -1,3 +1,8 @@
+use std::sync::Arc;
+use std::sync::RwLock;
+
+use rand::{rngs::ThreadRng, thread_rng, Rng};
+
 use super::{player, position, squad, style};
 
 pub struct Game<'a> {
@@ -5,6 +10,7 @@ pub struct Game<'a> {
     away: squad::Squad<'a>,
     home_stats: GameStats,
     away_stats: GameStats,
+    rng: Arc<RwLock<ThreadRng>>,
 }
 
 #[derive(Default)]
@@ -27,6 +33,7 @@ impl<'a> Game<'a> {
             away: away_squad,
             home_stats: GameStats::default(),
             away_stats: GameStats::default(),
+            rng: Arc::new(RwLock::new(thread_rng())),
         }
     }
 
@@ -40,9 +47,9 @@ impl<'a> Game<'a> {
         self.home_stats.possession = home_poss;
         self.away_stats.possession = away_poss;
         // calculate fouls based on possession
-        let home_fouls = self.get_fouls(&self.home, &self.home_stats);
-        let away_fouls = self.get_fouls(&self.away, &self.away_stats);
         // based on fouls calculate freekicks and yellow cards and red cards
+        let (home_fouls, home_yellows, home_reds) = self.get_fouls(&self.home, &self.home_stats);
+        let (away_fouls, away_yellows, away_reds) = self.get_fouls(&self.away, &self.away_stats);
         // modify posession based on red carads
         // based on possession calculate shots
         // calculate corners
@@ -83,14 +90,10 @@ impl<'a> Game<'a> {
     /// - possession
     /// - existing cards
     ///
-    fn get_fouls(
-        &self,
-        team: &squad::Squad,
-        stats: &GameStats,
-    ) -> (u8, Vec<&player::Player>, Vec<&player::Player>) {
+    fn get_fouls(&self, team: &squad::Squad, stats: &GameStats) -> (u8, Vec<u32>, Vec<u32>) {
         let mut fouls: f32 = 0.0;
-        let mut yellow_cards: Vec<&player::Player> = Vec::new();
-        let mut red_cards: Vec<&player::Player> = Vec::new();
+        let mut yellow_cards: Vec<u32> = Vec::new();
+        let mut red_cards: Vec<u32> = Vec::new();
         for &player in team.players.iter() {
             // less stamina = more easily tired = more chance to commit a foul
             let mut player_foul: f32 = 0.0;
@@ -98,7 +101,15 @@ impl<'a> Game<'a> {
             player_foul += u8::MAX as f32 / player.decision_making as f32 * 0.4;
             player_foul += team.tactics.aggression as f32 / player.tackling as f32 * 0.1;
             // yellow_card rate
+            let mut rng = self.rng.write().unwrap();
+            if rng.gen_bool((player_foul * 0.001) as f64) {
+                yellow_cards.push(player.id);
+            };
             // red card rate
+            let mut rng = self.rng.write().unwrap();
+            if rng.gen_bool((player_foul * 0.0005) as f64) {
+                red_cards.push(player.id);
+            };
         }
         fouls *= stats.possession;
         (fouls.round() as u8, yellow_cards, red_cards)
