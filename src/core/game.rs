@@ -44,55 +44,90 @@ impl<'a> Game<'a> {
     }
 
     fn play_half(&mut self) {
+        let (mut home_stats, mut away_stats) = (GameStats::default(), GameStats::default());
+        // carry over stats
+        {
+            // bookings
+            home_stats.yellow_cards = self.home_stats.yellow_cards.clone();
+            away_stats.yellow_cards = self.away_stats.yellow_cards.clone();
+            home_stats.red_cards = self.home_stats.red_cards.clone();
+            away_stats.red_cards = self.away_stats.red_cards.clone();
+            // goals
+            home_stats.goals = self.home_stats.goals;
+            away_stats.goals = self.away_stats.goals;
+        }
         // calculate possession of each team
-        let (home_poss, away_poss) = self.get_possession();
+        let (home_poss, away_poss) =
+            self.get_possession(&self.home, &self.away, &home_stats, &away_stats);
         {
             // modify stats
-            self.home_stats.possession = home_poss;
-            self.away_stats.possession = away_poss;
+            home_stats.possession = home_poss;
+            away_stats.possession = away_poss;
         }
         // calculate fouls based on possession
         // based on fouls calculate freekicks and yellow cards and red cards
-        let (home_fouls, home_yellows, home_reds) = self.get_fouls(&self.home, &self.home_stats);
-        let (away_fouls, away_yellows, away_reds) = self.get_fouls(&self.away, &self.away_stats);
+        let (home_fouls, home_yellows, home_reds) = self.get_fouls(&self.home, &home_stats);
+        let (away_fouls, away_yellows, away_reds) = self.get_fouls(&self.away, &away_stats);
         {
             // modify stats
-            self.home_stats.fouls += home_fouls;
-            self.home_stats.yellow_cards.extend(home_yellows);
-            self.home_stats.red_cards.extend(home_reds);
-            self.away_stats.fouls += away_fouls;
-            self.away_stats.yellow_cards.extend(away_yellows);
-            self.away_stats.red_cards.extend(away_reds);
+            home_stats.fouls += home_fouls;
+            home_stats.yellow_cards.extend(home_yellows);
+            home_stats.red_cards.extend(home_reds);
+            away_stats.fouls += away_fouls;
+            away_stats.yellow_cards.extend(away_yellows);
+            away_stats.red_cards.extend(away_reds);
         }
         // get squad strength
-        let home_def = self.get_squad_def_strength(&self.home, &self.home_stats);
-        let away_def = self.get_squad_def_strength(&self.away, &self.away_stats);
+        let home_def = self.get_squad_def_strength(&self.home, &home_stats);
+        let away_def = self.get_squad_def_strength(&self.away, &away_stats);
 
         // modify posession based on red cards
         // based on possession and tactics calculate shots
-        let home_shots = self.get_shots(&self.home, &self.home_stats, away_def);
-        let away_shots = self.get_shots(&self.away, &self.away_stats, home_def);
+        let home_shots = self.get_shots(&self.home, &home_stats, away_def);
+        let away_shots = self.get_shots(&self.away, &away_stats, home_def);
         {
             // modify stats
-            self.home_stats.shots += home_shots;
-            self.away_stats.shots += away_shots;
+            home_stats.shots += home_shots;
+            away_stats.shots += away_shots;
         }
         // calculate setpieces: corners, freekicks, penalties(based on fouls)
-        let (home_ck, home_fk, home_pn) =
-            self.get_set_pieces(&self.home, &self.home_stats, &self.away_stats);
-        let (away_ck, away_fk, away_pn) =
-            self.get_set_pieces(&self.away, &self.away_stats, &self.home_stats);
+        let (home_ck, home_fk, home_pn) = self.get_set_pieces(&self.home, &home_stats, &away_stats);
+        let (away_ck, away_fk, away_pn) = self.get_set_pieces(&self.away, &away_stats, &home_stats);
         {
             // modify stats
-            self.home_stats.corners += home_ck;
-            self.home_stats.freekicks += home_fk;
-            self.home_stats.penalties += home_pn;
-            self.away_stats.corners += away_ck;
-            self.away_stats.freekicks += away_fk;
-            self.away_stats.penalties += away_pn;
+            home_stats.corners += home_ck;
+            home_stats.freekicks += home_fk;
+            home_stats.penalties += home_pn;
+            away_stats.corners += away_ck;
+            away_stats.freekicks += away_fk;
+            away_stats.penalties += away_pn;
         }
         // based on shots and corners and freekicks calculate shots on target
         // based on shots on target calculate goals
+        // add game_half stats back to game stats
+        {
+            self.home_stats.possession = home_stats.possession;
+            self.home_stats.shots += home_stats.shots;
+            self.home_stats.shots_on_target += home_stats.shots_on_target;
+            self.home_stats.goals += home_stats.goals;
+            self.home_stats.freekicks += home_stats.freekicks;
+            self.home_stats.penalties += home_stats.penalties;
+            self.home_stats.corners += home_stats.corners;
+            self.home_stats.fouls += home_stats.fouls;
+            self.home_stats.yellow_cards.extend(home_stats.yellow_cards);
+            self.home_stats.red_cards.extend(home_stats.red_cards);
+
+            self.away_stats.possession = away_stats.possession;
+            self.away_stats.shots += away_stats.shots;
+            self.away_stats.shots_on_target += away_stats.shots_on_target;
+            self.away_stats.goals += away_stats.goals;
+            self.away_stats.freekicks += away_stats.freekicks;
+            self.away_stats.penalties += away_stats.penalties;
+            self.away_stats.corners += away_stats.corners;
+            self.away_stats.fouls += away_stats.fouls;
+            self.away_stats.yellow_cards.extend(away_stats.yellow_cards);
+            self.away_stats.red_cards.extend(away_stats.red_cards);
+        }
     }
 
     /// return posession for each team
@@ -108,11 +143,17 @@ impl<'a> Game<'a> {
     ///     - form
     ///     - stamina
     /// first value is home team, second value is away team
-    fn get_possession(&self) -> (f32, f32) {
+    fn get_possession(
+        &self,
+        home_team: &squad::Squad,
+        away_team: &squad::Squad,
+        home_stats: &GameStats,
+        away_stats: &GameStats,
+    ) -> (f32, f32) {
         // (tactics + formation + player playstyle) * tactics success rate * quality of players * home adv
         // home team
-        let home_score = self.get_team_poss_score(&self.home, &self.home_stats) * 1.1;
-        let away_score = self.get_team_poss_score(&self.away, &self.away_stats);
+        let home_score = self.get_team_poss_score(home_team, home_stats) * 1.1;
+        let away_score = self.get_team_poss_score(away_team, away_stats);
 
         let total = home_score + away_score;
 
