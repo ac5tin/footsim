@@ -18,7 +18,7 @@ pub struct Tactics {
     pub pass_range: u8,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Width {
     Central,
     Left,

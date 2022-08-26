@@ -3,7 +3,8 @@ use std::sync::RwLock;
 
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 
-use super::{player, position, squad, style};
+use super::tactics;
+use super::{position, squad, style};
 
 pub struct Game<'a> {
     home: squad::Squad<'a>,
@@ -20,6 +21,7 @@ pub struct GameStats {
     shots_on_target: u8,
     goals: u8,
     freekicks: u8,
+    penalties: u8,
     corners: u8,
     fouls: u8,
     yellow_cards: Vec<u32>,
@@ -75,7 +77,20 @@ impl<'a> Game<'a> {
             self.home_stats.shots += home_shots;
             self.away_stats.shots += away_shots;
         }
-        // calculate setpieces: corners, freekicks(based on fouls)
+        // calculate setpieces: corners, freekicks, penalties(based on fouls)
+        let (home_ck, home_fk, home_pn) =
+            self.get_set_pieces(&self.home, &self.home_stats, &self.away_stats);
+        let (away_ck, away_fk, away_pn) =
+            self.get_set_pieces(&self.away, &self.away_stats, &self.home_stats);
+        {
+            // modify stats
+            self.home_stats.corners += home_ck;
+            self.home_stats.freekicks += home_fk;
+            self.home_stats.penalties += home_pn;
+            self.away_stats.corners += away_ck;
+            self.away_stats.freekicks += away_fk;
+            self.away_stats.penalties += away_pn;
+        }
         // based on shots and corners and freekicks calculate shots on target
         // based on shots on target calculate goals
     }
@@ -166,6 +181,38 @@ impl<'a> Game<'a> {
         shots *= self.rng.write().unwrap().gen_range(0.5..1.3) * 10.0;
 
         shots.round() as u8
+    }
+
+    /// get number of corners, freekicks and penalties
+    /// calculated based on:
+    /// - tactics: shoot_more_often
+    /// - fouls of opponent team
+    fn get_set_pieces(
+        &self,
+        team: &squad::Squad,
+        stats: &GameStats,
+        opp_stats: &GameStats,
+    ) -> (u8, u8, u8) {
+        let mut rng = self.rng.write().unwrap();
+        let mut corner_rate: f32 = 10.0; // base rate
+        if team.tactics.shoot_more_often {
+            corner_rate += 10.0;
+        }
+        if team.tactics.attack_width != tactics::Width::Central {
+            corner_rate += 5.0;
+        }
+        corner_rate *= stats.possession;
+        if corner_rate > 3.0 {
+            corner_rate += rng.gen_range(-2.5..3.5);
+        }
+
+        let corners: u8 = rng.gen_range(0..corner_rate.round() as u8);
+
+        let freekicks: u8 = rng.gen_range(opp_stats.yellow_cards.len() as u8..opp_stats.fouls);
+
+        let penalties: f32 = opp_stats.fouls as f32 * rng.gen_range(0.01..0.1);
+
+        (corners, freekicks, penalties.round() as u8)
     }
 
     fn get_team_poss_score(&self, squad: &squad::Squad, stats: &GameStats) -> f32 {
