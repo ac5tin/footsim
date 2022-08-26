@@ -44,12 +44,25 @@ impl<'a> Game<'a> {
     fn play_half(&mut self) {
         // calculate possession of each team
         let (home_poss, away_poss) = self.get_possession();
-        self.home_stats.possession = home_poss;
-        self.away_stats.possession = away_poss;
+        {
+            // modify stats
+            self.home_stats.possession = home_poss;
+            self.away_stats.possession = away_poss;
+        }
         // calculate fouls based on possession
         // based on fouls calculate freekicks and yellow cards and red cards
         let (home_fouls, home_yellows, home_reds) = self.get_fouls(&self.home, &self.home_stats);
         let (away_fouls, away_yellows, away_reds) = self.get_fouls(&self.away, &self.away_stats);
+        {
+            // modify stats
+            self.home_stats.fouls += home_fouls;
+            self.home_stats.yellow_cards.extend(home_yellows);
+            self.home_stats.red_cards.extend(home_reds);
+            self.away_stats.fouls += away_fouls;
+            self.away_stats.yellow_cards.extend(away_yellows);
+            self.away_stats.red_cards.extend(away_reds);
+        }
+
         // modify posession based on red carads
         // based on possession calculate shots
         // calculate corners
