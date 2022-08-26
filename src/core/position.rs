@@ -1,3 +1,4 @@
+#[derive(PartialEq, Eq)]
 pub enum Position {
     Goalkeeper,
     LeftBack,

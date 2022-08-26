@@ -62,11 +62,20 @@ impl<'a> Game<'a> {
             self.away_stats.yellow_cards.extend(away_yellows);
             self.away_stats.red_cards.extend(away_reds);
         }
+        // get squad strength
+        let home_def = self.get_squad_def_strength(&self.home, &self.home_stats);
+        let away_def = self.get_squad_def_strength(&self.away, &self.away_stats);
 
-        // modify posession based on red carads
-        // based on possession calculate shots
-        // calculate corners
-        // calculate freekicks
+        // modify posession based on red cards
+        // based on possession and tactics calculate shots
+        let home_shots = self.get_shots(&self.home, &self.home_stats, away_def);
+        let away_shots = self.get_shots(&self.away, &self.away_stats, home_def);
+        {
+            // modify stats
+            self.home_stats.shots += home_shots;
+            self.away_stats.shots += away_shots;
+        }
+        // calculate setpieces: corners, freekicks(based on fouls)
         // based on shots and corners and freekicks calculate shots on target
         // based on shots on target calculate goals
     }
@@ -130,6 +139,33 @@ impl<'a> Game<'a> {
         }
         fouls *= stats.possession;
         (fouls.round() as u8, yellow_cards, red_cards)
+    }
+
+    /// get number of shots for the team
+    /// calculated based on:
+    /// - tactics: shoot_more_often
+    /// - player creativity, passing,technique
+    fn get_shots(&self, team: &squad::Squad, stats: &GameStats, opp_def_str: f32) -> u8 {
+        let mut shots: f32 = 0.0;
+        for &player in team
+            .players
+            .iter()
+            .filter(|p| !stats.red_cards.contains(&p.id))
+        {
+            shots += player.creativity as f32 * 0.4;
+            shots += player.passing as f32 * 0.15;
+            shots += player.technique as f32 * 0.15;
+        }
+
+        shots /= opp_def_str;
+
+        if team.tactics.shoot_more_often {
+            shots *= 1.5;
+        }
+
+        shots *= self.rng.write().unwrap().gen_range(0.5..1.3) * 10.0;
+
+        shots.round() as u8
     }
 
     fn get_team_poss_score(&self, squad: &squad::Squad, stats: &GameStats) -> f32 {
@@ -216,5 +252,32 @@ impl<'a> Game<'a> {
         // 1.7 -> 433.5
 
         tact_score * formation_score * manager_score * 0.0001 * players_score
+    }
+
+    /// get squad defensive strength score
+    /// return defense_strength
+    fn get_squad_def_strength(&self, team: &squad::Squad, stats: &GameStats) -> f32 {
+        let mut def = 0.0;
+        for &p in team
+            .players
+            .iter()
+            .filter(|p| !stats.red_cards.contains(&p.id))
+        {
+            if p.position == position::Position::Goalkeeper {
+                def += p.goalkeeping as f32 * 0.5;
+                continue;
+            }
+            let multiplier = match p.position {
+                position::Position::CenterBack => 0.7,
+                position::Position::LeftBack | position::Position::RightBack => 0.5,
+                position::Position::LeftWingBack | position::Position::RightWingBack => 0.4,
+                position::Position::DefensiveMidfield => 0.35,
+                position::Position::CenterMidfield => 0.3,
+                _ => 0.1,
+            };
+            def += (p.defensive_positioning as f32 + p.tackling as f32 + p.marking as f32)
+                * multiplier;
+        }
+        def
     }
 }

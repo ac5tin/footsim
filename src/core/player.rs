@@ -11,6 +11,8 @@ pub struct Player {
     pub tactical: u8,
     pub leadership: u8,
     pub decision_making: u8,
+    pub creativity: u8,
+    pub vision: u8,
     // physical
     pub fitness: u8,
     pub pace: u8,
@@ -47,6 +49,8 @@ impl Player {
             tactical: 0,
             leadership: 0,
             decision_making: 0,
+            creativity: 0,
+            vision: 0,
             fitness: 0,
             pace: 0,
             strength: 0,
