@@ -3,6 +3,7 @@ use std::sync::RwLock;
 
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 
+use super::player;
 use super::tactics;
 use super::{position, squad, style};
 
@@ -14,7 +15,7 @@ pub struct Game<'a> {
     rng: Arc<RwLock<ThreadRng>>,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct GameStats {
     possession: f32,
     shots: u8,
@@ -56,6 +57,9 @@ impl<'a> Game<'a> {
             home_stats.goals = self.home_stats.goals;
             away_stats.goals = self.away_stats.goals;
         }
+        // get players
+        let home_players = self.get_players(&self.home, home_stats.clone());
+        let away_players = self.get_players(&self.away, away_stats.clone());
         // calculate possession of each team
         let (home_poss, away_poss) =
             self.get_possession(&self.home, &self.away, &home_stats, &away_stats);
@@ -367,5 +371,15 @@ impl<'a> Game<'a> {
                 * multiplier;
         }
         def
+    }
+
+    fn get_players(
+        &self,
+        team: &'a squad::Squad,
+        stats: GameStats,
+    ) -> impl Iterator<Item = &'a &'a player::Player> {
+        team.players
+            .iter()
+            .filter(move |p| !stats.red_cards.contains(&p.id))
     }
 }
