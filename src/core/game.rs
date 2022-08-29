@@ -112,7 +112,7 @@ impl<'a> Game<'a> {
         // based on possession and tactics calculate shots
         let home_shots = self.get_shots(
             &self.home,
-            home_players.into_iter(),
+            home_players.clone().into_iter(),
             &home_stats,
             home_aerial_threat,
             away_aerial_def,
@@ -120,7 +120,7 @@ impl<'a> Game<'a> {
         );
         let away_shots = self.get_shots(
             &self.away,
-            away_players.into_iter(),
+            away_players.clone().into_iter(),
             &away_stats,
             away_aerial_threat,
             home_aerial_def,
@@ -144,6 +144,10 @@ impl<'a> Game<'a> {
             away_stats.penalties += away_pn;
         }
         // based on shots and corners and freekicks calculate shots on target
+        let home_sot =
+            self.get_shots_on_target(&self.home, home_players.clone().into_iter(), &home_stats);
+        let away_sot =
+            self.get_shots_on_target(&self.away, away_players.clone().into_iter(), &away_stats);
         // based on shots on target calculate goals
         // add game_half stats back to game stats
         {
@@ -273,6 +277,45 @@ impl<'a> Game<'a> {
         // aerial duels (crosses)
         for _ in 0..stats.crosses {
             if rng.gen_bool((aerial_atk / opp_aerial_def) as f64 * 0.5) {
+                total += 1;
+            }
+        }
+        total
+    }
+
+    fn get_shots_on_target(
+        &self,
+        team: &squad::Squad,
+        players: impl Iterator<Item = &'a &'a player::Player>,
+        stats: &GameStats,
+    ) -> u8 {
+        let mut rng = self.rng.write().unwrap();
+        let mut shooting_acc = 0.0;
+        let mut i = 0;
+        for p in players {
+            let multiplier = match p.position {
+                position::Position::Striker => 1.0,
+                position::Position::LeftWing | position::Position::RightWing => 0.8,
+                position::Position::LeftMidfield
+                | position::Position::AttackingMidfield
+                | position::Position::RightMidfield => 0.7,
+                position::Position::CenterMidfield => 0.6,
+                position::Position::Goalkeeper => continue,
+                _ => 0.2,
+            };
+            i += 1;
+            shooting_acc += p.shooting as f32 * multiplier;
+        }
+        shooting_acc /= i as f32;
+
+        if team.tactics.shoot_more_often {
+            shooting_acc *= 0.8;
+        }
+
+        let mut total = 0;
+        for _ in 0..stats.shots {
+            let rnd = rng.gen_range(0.8..1.3);
+            if rng.gen_bool(shooting_acc as f64 * rnd) {
                 total += 1;
             }
         }
