@@ -18,6 +18,7 @@ pub struct Game<'a> {
 #[derive(Default, Clone)]
 pub struct GameStats {
     possession: f32,
+    crosses: u8,
     shots: u8,
     shots_on_target: u8,
     goals: u8,
@@ -58,8 +59,25 @@ impl<'a> Game<'a> {
             away_stats.goals = self.away_stats.goals;
         }
         // get players
-        let home_players = self.get_players(&self.home, home_stats.clone());
-        let away_players = self.get_players(&self.away, away_stats.clone());
+        let home_players = self
+            .get_players(&self.home, home_stats.clone())
+            .collect::<Vec<_>>();
+        let away_players = self
+            .get_players(&self.away, away_stats.clone())
+            .collect::<Vec<_>>();
+        // --- get squad strength --
+        let home_def = self.get_squad_def_strength(&self.home, &home_stats);
+        let away_def = self.get_squad_def_strength(&self.away, &away_stats);
+        // get aerial threat , defense
+        let home_aerial_threat = self.get_atk_aerial(home_players.clone().into_iter());
+        let home_aerial_def = self.get_def_aerial(home_players.clone().into_iter());
+        let away_aerial_threat = self.get_atk_aerial(away_players.clone().into_iter());
+        let away_aerial_def = self.get_def_aerial(away_players.clone().into_iter());
+        let home_wide_atk = self.get_wide_atk(&self.home, home_players.clone().into_iter());
+        let away_wide_atk = self.get_wide_atk(&self.away, away_players.clone().into_iter());
+        let home_wide_def = self.get_wide_def(&self.home, home_players.clone().into_iter());
+        let away_wide_def = self.get_wide_def(&self.home, away_players.clone().into_iter());
+        // --- calculations ---
         // calculate possession of each team
         let (home_poss, away_poss) =
             self.get_possession(&self.home, &self.away, &home_stats, &away_stats);
@@ -81,14 +99,33 @@ impl<'a> Game<'a> {
             away_stats.yellow_cards.extend(away_yellows);
             away_stats.red_cards.extend(away_reds);
         }
-        // get squad strength
-        let home_def = self.get_squad_def_strength(&self.home, &home_stats);
-        let away_def = self.get_squad_def_strength(&self.away, &away_stats);
 
         // modify posession based on red cards
+        // based on possession get crosses
+        let home_crosses = self.get_crosses(&self.home, &home_stats, home_wide_atk, away_wide_def);
+        let away_crosses = self.get_crosses(&self.away, &away_stats, away_wide_atk, home_wide_def);
+        {
+            // modify stats
+            home_stats.crosses += home_crosses;
+            away_stats.crosses += away_crosses;
+        }
         // based on possession and tactics calculate shots
-        let home_shots = self.get_shots(&self.home, &home_stats, away_def);
-        let away_shots = self.get_shots(&self.away, &away_stats, home_def);
+        let home_shots = self.get_shots(
+            &self.home,
+            home_players.into_iter(),
+            &home_stats,
+            home_aerial_threat,
+            away_aerial_def,
+            away_def,
+        );
+        let away_shots = self.get_shots(
+            &self.away,
+            away_players.into_iter(),
+            &away_stats,
+            away_aerial_threat,
+            home_aerial_def,
+            home_def,
+        );
         {
             // modify stats
             home_stats.shots += home_shots;
@@ -203,15 +240,21 @@ impl<'a> Game<'a> {
 
     /// get number of shots for the team
     /// calculated based on:
-    /// - tactics: shoot_more_often
+    /// - tactics: shoot_more_often, cross_more_often
     /// - player creativity, passing,technique
-    fn get_shots(&self, team: &squad::Squad, stats: &GameStats, opp_def_str: f32) -> u8 {
+    /// - box aerial battle
+    fn get_shots(
+        &self,
+        team: &squad::Squad,
+        players: impl Iterator<Item = &'a &'a player::Player>,
+        stats: &GameStats,
+        aerial_atk: f32,
+        opp_aerial_def: f32,
+        opp_def_str: f32,
+    ) -> u8 {
+        let mut rng = self.rng.write().unwrap();
         let mut shots: f32 = 0.0;
-        for &player in team
-            .players
-            .iter()
-            .filter(|p| !stats.red_cards.contains(&p.id))
-        {
+        for player in players {
             shots += player.creativity as f32 * 0.4;
             shots += player.passing as f32 * 0.15;
             shots += player.technique as f32 * 0.15;
@@ -225,7 +268,53 @@ impl<'a> Game<'a> {
 
         shots *= self.rng.write().unwrap().gen_range(0.5..1.3) * 10.0;
 
-        shots.round() as u8
+        let mut total = shots.round() as u8;
+
+        // aerial duels (crosses)
+        for _ in 0..stats.crosses {
+            if rng.gen_bool((aerial_atk / opp_aerial_def) as f64 * 0.5) {
+                total += 1;
+            }
+        }
+        total
+    }
+
+    /// get number of crosses for the team
+    /// factors:
+    /// - tactics: cross_more_often, attack width
+    /// - opp_tactics: compactness
+    /// - wide players passing ability
+    /// - opp wide players defending ability
+    fn get_crosses(
+        &self,
+        team: &squad::Squad,
+        stats: &GameStats,
+        wide_atk: (f32, f32),
+        opp_wide_def: (f32, f32),
+    ) -> u8 {
+        let mut rng = self.rng.write().unwrap();
+
+        let mut crosses: f32 = rng.gen_range(1.0..30.0);
+        match team.tactics.attack_width {
+            tactics::Width::Central => {
+                crosses *= 0.7;
+            }
+            tactics::Width::Balanced => {
+                crosses *=
+                    ((wide_atk.0 + wide_atk.1) / 2.0) / ((opp_wide_def.0 + opp_wide_def.1) / 2.0);
+            }
+            tactics::Width::Left => {
+                crosses *= wide_atk.0 / opp_wide_def.1;
+            }
+            tactics::Width::Right => {
+                crosses *= wide_atk.1 / opp_wide_def.0;
+            }
+        }
+        if team.tactics.cross_more_often {
+            crosses *= 2.0;
+        }
+        crosses *= stats.possession;
+        crosses.round() as u8
     }
 
     /// get number of corners, freekicks and penalties
@@ -381,5 +470,177 @@ impl<'a> Game<'a> {
         team.players
             .iter()
             .filter(move |p| !stats.red_cards.contains(&p.id))
+    }
+
+    /// get defensive aerial strength
+    /// box defensive capabilities to deal with high balls
+    /// factors:
+    /// - height
+    /// - jumping
+    /// - strength
+    /// - heading
+    /// - defensive positioning
+    /// - marking
+    fn get_def_aerial(&self, players: impl Iterator<Item = &'a &'a player::Player>) -> f32 {
+        let mut def = 0.0;
+        for p in players {
+            if p.position == position::Position::Goalkeeper {
+                def += p.goalkeeping as f32 + p.jumping as f32 + p.height as f32;
+                continue;
+            }
+            let multiplier = match p.position {
+                position::Position::CenterBack => 1.0,
+                position::Position::LeftBack | position::Position::RightBack => 0.6,
+                position::Position::LeftWingBack | position::Position::RightWingBack => 0.5,
+                position::Position::DefensiveMidfield => 0.35,
+                position::Position::CenterMidfield => 0.2,
+                _ => 0.01,
+            };
+            def += (p.height as f32
+                + p.jumping as f32
+                + p.strength as f32 * 0.9
+                + p.heading as f32 * 0.7
+                + p.defensive_positioning as f32 * 0.6
+                + p.marking as f32 * 0.5)
+                * multiplier;
+        }
+        // back5-max: 5035, back 4-max: 3837
+        def
+    }
+
+    /// get attacking aerial strength
+    /// box attacking capabilities to deal with high balls
+    /// factors:
+    /// - height
+    /// - jumping
+    /// - strength
+    /// - heading
+    /// - attack positioning
+    fn get_atk_aerial(&self, players: impl Iterator<Item = &'a &'a player::Player>) -> f32 {
+        let mut atk = 0.0;
+        for p in players {
+            {
+                let multiplier = match p.position {
+                    position::Position::Striker => 1.0,
+                    position::Position::RightWing | position::Position::LeftWing => 0.6,
+                    position::Position::AttackingMidfield
+                    | position::Position::LeftMidfield
+                    | position::Position::RightMidfield => 0.3,
+                    position::Position::CenterMidfield => 0.2,
+                    _ => 0.01,
+                };
+                atk += (p.height as f32
+                    + p.jumping as f32
+                    + p.strength as f32 * 0.9
+                    + p.heading as f32 * 0.7
+                    + p.attack_positioning as f32 * 0.6)
+                    * multiplier;
+                // front 4 with 2 strikers-max: 3428
+            }
+        }
+        atk
+    }
+
+    /// get thread score on the flanks
+    /// return left side thread, right side thread
+    /// factors:
+    /// - tactics: attack_width
+    /// - players: technique, pace, attack_positioning, playstyle
+    fn get_wide_atk(
+        &self,
+        team: &squad::Squad,
+        players: impl Iterator<Item = &'a &'a player::Player>,
+    ) -> (f32, f32) {
+        let mut left = 0.0;
+        let mut right = 0.0;
+        for p in players {
+            let mut ability =
+                (p.technique as f32 + p.pace as f32 + p.attack_positioning as f32) / 3.0;
+            ability *= match p.playstyle {
+                style::PlayStyle::Inverted => 0.7,  // inverted fullbacks
+                style::PlayStyle::TrackBack => 0.8, // wingers that trackback
+                _ => 1.0,
+            };
+            let multiplier = match p.position {
+                position::Position::LeftWing | position::Position::RightWing => 1.0,
+                position::Position::LeftMidfield | position::Position::RightMidfield => 0.9,
+                position::Position::LeftWingBack | position::Position::RightWingBack => 0.7,
+                position::Position::LeftBack | position::Position::RightBack => 0.7,
+                _ => continue,
+            };
+            ability *= multiplier;
+
+            match p.position {
+                position::Position::LeftWing
+                | position::Position::LeftMidfield
+                | position::Position::LeftWingBack
+                | position::Position::LeftBack => {
+                    left += ability;
+                }
+                position::Position::RightWing
+                | position::Position::RightMidfield
+                | position::Position::RightWingBack
+                | position::Position::RightBack => {
+                    right += ability;
+                }
+                _ => continue,
+            }
+        }
+        if team.tactics.attack_width == tactics::Width::Central {
+            left *= 0.7;
+            right *= 0.7;
+        };
+        (left, right)
+    }
+
+    /// get defensive capabilities on the flanks
+    fn get_wide_def(
+        &self,
+        team: &squad::Squad,
+        players: impl Iterator<Item = &'a &'a player::Player>,
+    ) -> (f32, f32) {
+        let mut left = 0.0;
+        let mut right = 0.0;
+        for p in players {
+            let mut ability = (p.tackling as f32
+                + p.marking as f32
+                + p.pace as f32
+                + p.attack_positioning as f32)
+                / 4.0;
+            ability *= match p.playstyle {
+                style::PlayStyle::Wide => 1.0,      // wide fullbacks
+                style::PlayStyle::TrackBack => 0.7, // wingers that track back
+                _ => 0.5,
+            };
+            let multiplier = match p.position {
+                position::Position::LeftWing | position::Position::RightWing => 1.0,
+                position::Position::LeftMidfield | position::Position::RightMidfield => 0.9,
+                position::Position::LeftWingBack | position::Position::RightWingBack => 0.7,
+                position::Position::LeftBack | position::Position::RightBack => 0.7,
+                _ => continue,
+            };
+            ability *= multiplier;
+
+            match p.position {
+                position::Position::LeftWing
+                | position::Position::LeftMidfield
+                | position::Position::LeftWingBack
+                | position::Position::LeftBack => {
+                    left += ability;
+                }
+                position::Position::RightWing
+                | position::Position::RightMidfield
+                | position::Position::RightWingBack
+                | position::Position::RightBack => {
+                    right += ability;
+                }
+                _ => continue,
+            }
+        }
+
+        let cmpt = team.tactics.compactness as f32 / u8::MAX as f32;
+        left *= cmpt;
+        right *= cmpt;
+        (left, right)
     }
 }

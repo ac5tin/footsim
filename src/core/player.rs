@@ -5,6 +5,8 @@ pub struct Player {
     pub name: String,
     pub team_id: u32,
     pub country_id: u32,
+    // basic
+    pub height: u32,
     // mental
     pub morale: u8,
     pub form: u8,
@@ -18,6 +20,7 @@ pub struct Player {
     pub pace: u8,
     pub strength: u8,
     pub stamina: u8,
+    pub jumping: u8,
     // technical
     pub passing: u8,
     pub technique: u8,
@@ -44,6 +47,7 @@ impl Player {
             name: String::new(),
             team_id: 0,
             country_id: 0,
+            height: 0,
             morale: 0,
             form: 0,
             tactical: 0,
@@ -55,6 +59,7 @@ impl Player {
             pace: 0,
             strength: 0,
             stamina: 0,
+            jumping: 0,
             passing: 0,
             technique: 0,
             heading: 0,

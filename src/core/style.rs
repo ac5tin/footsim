@@ -8,6 +8,7 @@ pub enum PlayStyle {
     Wide,
     // Wingers
     CutInside,
+    TrackBack,
     // Fullbacks
     Inverted,
     // midfield
