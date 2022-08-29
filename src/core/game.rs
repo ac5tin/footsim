@@ -148,7 +148,19 @@ impl<'a> Game<'a> {
             self.get_shots_on_target(&self.home, home_players.clone().into_iter(), &home_stats);
         let away_sot =
             self.get_shots_on_target(&self.away, away_players.clone().into_iter(), &away_stats);
+        {
+            // modify stats
+            home_stats.shots_on_target += home_sot;
+            away_stats.shots_on_target += away_sot;
+        }
         // based on shots on target calculate goals
+        let home_goals = self.get_goals(&self.away, &away_stats);
+        let away_goals = self.get_goals(&self.home, &home_stats);
+        {
+            // modify stats
+            home_stats.goals += home_goals;
+            away_stats.goals += away_goals;
+        }
         // add game_half stats back to game stats
         {
             self.home_stats.possession = home_stats.possession;
@@ -320,6 +332,23 @@ impl<'a> Game<'a> {
             }
         }
         total
+    }
+
+    fn get_goals(&self, opp: &squad::Squad, stats: &GameStats) -> u8 {
+        let mut rng = self.rng.write().unwrap();
+        let keeper = opp
+            .players
+            .iter()
+            .find(|p| p.position == position::Position::Goalkeeper)
+            .unwrap();
+
+        let mut goals = 0;
+        for _ in 0..stats.shots_on_target {
+            if rng.gen_bool(keeper.goalkeeping as f64 * 0.002) {
+                goals += 1;
+            }
+        }
+        goals
     }
 
     /// get number of crosses for the team
