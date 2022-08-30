@@ -161,8 +161,8 @@ impl<'a> Game<'a> {
             away_stats.shots_on_target += away_sot;
         }
         // based on shots on target calculate goals
-        let home_goals = self.get_goals(&self.away, &away_stats);
-        let away_goals = self.get_goals(&self.home, &home_stats);
+        let home_goals = self.get_goals(&self.away, &home_stats);
+        let away_goals = self.get_goals(&self.home, &away_stats);
         {
             // modify stats
             home_stats.goals += home_goals;
@@ -356,7 +356,9 @@ impl<'a> Game<'a> {
 
         let mut goals = 0;
         for _ in 0..stats.shots_on_target {
-            if rng.gen_bool(keeper.goalkeeping as f64 * 0.002) {
+            // can opponent keeper save the shot
+            if !rng.gen_bool(keeper.goalkeeping as f64 * 0.0035) {
+                // keeper fails to make a save
                 goals += 1;
             }
         }
