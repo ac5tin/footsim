@@ -66,24 +66,12 @@ impl<'a> Game<'a> {
             away_stats.goals = self.away_stats.goals;
         }
         // get players
-        let home_players = self
+        let mut home_players = self
             .get_players(&self.home, home_stats.clone())
             .collect::<Vec<_>>();
-        let away_players = self
+        let mut away_players = self
             .get_players(&self.away, away_stats.clone())
             .collect::<Vec<_>>();
-        // --- get squad strength --
-        let home_def = self.get_squad_def_strength(&self.home, &home_stats);
-        let away_def = self.get_squad_def_strength(&self.away, &away_stats);
-        // get aerial threat , defense
-        let home_aerial_threat = self.get_atk_aerial(home_players.clone().into_iter());
-        let home_aerial_def = self.get_def_aerial(home_players.clone().into_iter());
-        let away_aerial_threat = self.get_atk_aerial(away_players.clone().into_iter());
-        let away_aerial_def = self.get_def_aerial(away_players.clone().into_iter());
-        let home_wide_atk = self.get_wide_atk(&self.home, home_players.clone().into_iter());
-        let away_wide_atk = self.get_wide_atk(&self.away, away_players.clone().into_iter());
-        let home_wide_def = self.get_wide_def(&self.home, home_players.clone().into_iter());
-        let away_wide_def = self.get_wide_def(&self.home, away_players.clone().into_iter());
         // --- calculations ---
         // calculate possession of each team
         let (home_poss, away_poss) =
@@ -101,13 +89,53 @@ impl<'a> Game<'a> {
             // modify stats
             home_stats.fouls += home_fouls;
             home_stats.yellow_cards.extend(home_yellows);
-            home_stats.red_cards.extend(home_reds);
+            home_stats.red_cards.extend(home_reds.to_owned());
             away_stats.fouls += away_fouls;
             away_stats.yellow_cards.extend(away_yellows);
-            away_stats.red_cards.extend(away_reds);
+            away_stats.red_cards.extend(away_reds.to_owned());
         }
 
         // modify posession based on red cards
+        {
+            let red_cards_diff =
+                home_stats.red_cards.len() as i32 - away_stats.red_cards.len() as i32;
+            if red_cards_diff > 0 {
+                // home has more red cards
+                home_stats.possession =
+                    f32::powi(0.25, red_cards_diff) as f32 * home_stats.possession;
+                away_stats.possession = 1.0 - home_stats.possession;
+            } else {
+                // away has more red cards
+                if away_reds.len() > 0 {
+                    away_stats.possession =
+                        f32::powi(0.25, red_cards_diff * -1) as f32 * away_stats.possession;
+                    home_stats.possession = 1.0 - away_stats.possession;
+                }
+            };
+            // update players
+
+            // get players
+            home_players = self
+                .get_players(&self.home, home_stats.clone())
+                .collect::<Vec<_>>();
+            away_players = self
+                .get_players(&self.away, away_stats.clone())
+                .collect::<Vec<_>>();
+        }
+
+        // --- get squad strength --
+        let home_def = self.get_squad_def_strength(&self.home, &home_stats);
+        let away_def = self.get_squad_def_strength(&self.away, &away_stats);
+        // gerial threat , defense
+        let home_aerial_threat = self.get_atk_aerial(home_players.clone().into_iter());
+        let home_aerial_def = self.get_def_aerial(home_players.clone().into_iter());
+        let away_aerial_threat = self.get_atk_aerial(away_players.clone().into_iter());
+        let away_aerial_def = self.get_def_aerial(away_players.clone().into_iter());
+        let home_wide_atk = self.get_wide_atk(&self.home, home_players.clone().into_iter());
+        let away_wide_atk = self.get_wide_atk(&self.away, away_players.clone().into_iter());
+        let home_wide_def = self.get_wide_def(&self.home, home_players.clone().into_iter());
+        let away_wide_def = self.get_wide_def(&self.home, away_players.clone().into_iter());
+
         // based on possession get crosses
         let home_crosses = self.get_crosses(&self.home, &home_stats, home_wide_atk, away_wide_def);
         let away_crosses = self.get_crosses(&self.away, &away_stats, away_wide_atk, home_wide_def);
@@ -242,19 +270,30 @@ impl<'a> Game<'a> {
             .iter()
             .filter(|p| !stats.red_cards.contains(&p.id))
         {
+            if player.position == position::Position::Goalkeeper {
+                continue;
+            }
             // less stamina = more easily tired = more chance to commit a foul
-            let mut player_foul: f32 = 0.0;
+            let mut player_foul: f32 = 0.1;
             player_foul += u8::MAX as f32 / player.stamina as f32 * 0.1;
             player_foul += u8::MAX as f32 / player.decision_making as f32 * 0.4;
             player_foul += team.tactics.aggression as f32 / player.tackling as f32 * 0.1;
             // yellow_card rate
-            if rng.gen_bool((player_foul * 0.001) as f64) {
+            let mut yellows = 0;
+            if rng.gen_bool((player_foul * 0.5) as f64) {
                 yellow_cards.push(player.id);
+                yellows += 1;
             };
             // red card rate
-            if rng.gen_bool((player_foul * 0.0005) as f64) {
+            let mut reds = 0;
+            if rng.gen_bool((player_foul * 0.01) as f64) {
                 red_cards.push(player.id);
+                reds += 1;
             };
+
+            // foul rate
+            let cards = yellows + reds;
+            fouls += rng.gen_range(cards as f32..(cards as f32 + player_foul * 2.5));
         }
         fouls *= stats.possession;
         (fouls.round() as u8, yellow_cards, red_cards)
