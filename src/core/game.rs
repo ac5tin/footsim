@@ -3,6 +3,7 @@ use std::sync::RwLock;
 
 use rand::{rngs::ThreadRng, thread_rng, Rng};
 
+use super::action;
 use super::player;
 use super::tactics;
 use super::{position, squad, style};
@@ -12,6 +13,8 @@ pub struct Game<'a> {
     away: squad::Squad<'a>,
     home_stats: GameStats,
     away_stats: GameStats,
+    home_actions: Vec<(&'a player::Player, action::Action)>,
+    away_actions: Vec<(&'a player::Player, action::Action)>,
     rng: Arc<RwLock<ThreadRng>>,
 }
 
@@ -37,6 +40,8 @@ impl<'a> Game<'a> {
             away: away_squad,
             home_stats: GameStats::default(),
             away_stats: GameStats::default(),
+            home_actions: vec![],
+            away_actions: vec![],
             rng: Arc::new(RwLock::new(thread_rng())),
         }
     }
