@@ -83,7 +83,6 @@ impl<'a> Game<'a> {
         }
         // calculate fouls based on possession
         // based on fouls calculate freekicks and yellow cards and red cards
-        println!("getting fouls"); //debug
         let (home_fouls, home_yellows, home_reds) = self.get_fouls(&self.home, &home_stats);
         let (away_fouls, away_yellows, away_reds) = self.get_fouls(&self.away, &away_stats);
         {
@@ -146,7 +145,6 @@ impl<'a> Game<'a> {
             away_stats.crosses += away_crosses;
         }
         // based on possession and tactics calculate shots
-        println!("getting shots"); //debug
         let home_shots = self.get_shots(
             &self.home,
             home_players.clone().into_iter(),
@@ -169,7 +167,6 @@ impl<'a> Game<'a> {
             away_stats.shots += away_shots;
         }
         // calculate setpieces: corners, freekicks, penalties(based on fouls)
-        println!("getting set pieces"); //debug
         let (home_ck, home_fk, home_pn) = self.get_set_pieces(&self.home, &home_stats, &away_stats);
         let (away_ck, away_fk, away_pn) = self.get_set_pieces(&self.away, &away_stats, &home_stats);
         {
@@ -182,7 +179,6 @@ impl<'a> Game<'a> {
             away_stats.penalties += away_pn;
         }
         // based on shots and corners and freekicks calculate shots on target
-        println!("getting sot"); //debug
         let home_sot =
             self.get_shots_on_target(&self.home, home_players.clone().into_iter(), &home_stats);
         let away_sot =
