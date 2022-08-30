@@ -7,7 +7,7 @@ check/tag:
 
 
 test: 
-	RUST_LOG=debug cargo test
+	RUST_LOG=debug cargo test -- --nocapture
 
 run:
 	RUST_LOG=info cargo run
