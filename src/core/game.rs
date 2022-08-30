@@ -280,13 +280,13 @@ impl<'a> Game<'a> {
             player_foul += team.tactics.aggression as f32 / player.tackling as f32 * 0.1;
             // yellow_card rate
             let mut yellows = 0;
-            if rng.gen_bool((player_foul * 0.5) as f64) {
+            if rng.gen_bool((player_foul * 0.25) as f64) {
                 yellow_cards.push(player.id);
                 yellows += 1;
             };
             // red card rate
             let mut reds = 0;
-            if rng.gen_bool((player_foul * 0.01) as f64) {
+            if rng.gen_bool((player_foul * 0.005) as f64) {
                 red_cards.push(player.id);
                 reds += 1;
             };
@@ -324,16 +324,16 @@ impl<'a> Game<'a> {
         shots /= opp_def_str;
 
         if team.tactics.shoot_more_often {
-            shots *= 1.5;
+            shots *= 1.25;
         }
 
-        shots *= rng.gen_range(0.5..1.3) * 10.0;
+        shots *= rng.gen_range(0.25..0.75) * 10.0;
 
         let mut total = shots.round() as u8;
 
         // aerial duels (crosses)
         for _ in 0..stats.crosses {
-            if rng.gen_bool((aerial_atk / opp_aerial_def) as f64 * 0.5) {
+            if rng.gen_bool((aerial_atk / opp_aerial_def) as f64 * 0.25) {
                 total += 1;
             }
         }
@@ -481,6 +481,7 @@ impl<'a> Game<'a> {
     }
 
     fn get_team_poss_score(&self, squad: &squad::Squad, stats: &GameStats) -> f32 {
+        let mut rng = self.rng.write().unwrap();
         // --- tactics: pressure, buildup, ball retention, pass_range ---
         let pressure = squad.tactics.defense_line as f32
             * (u8::MAX - squad.tactics.compactness + 1) as f32
@@ -563,7 +564,12 @@ impl<'a> Game<'a> {
         let manager_score = squad.manager.tactical as f32 + squad.manager.management as f32 * 0.7;
         // 1.7 -> 433.5
 
-        tact_score * formation_score * manager_score * 0.0001 * players_score
+        tact_score
+            * formation_score
+            * manager_score
+            * 0.0001
+            * players_score
+            * rng.gen_range(0.85..1.15)
     }
 
     /// get squad defensive strength score
