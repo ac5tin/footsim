@@ -17,17 +17,17 @@ pub struct Game<'a> {
 
 #[derive(Default, Clone)]
 pub struct GameStats {
-    possession: f32,
-    crosses: u8,
-    shots: u8,
-    shots_on_target: u8,
-    goals: u8,
-    freekicks: u8,
-    penalties: u8,
-    corners: u8,
-    fouls: u8,
-    yellow_cards: Vec<u32>,
-    red_cards: Vec<u32>,
+    pub possession: f32,
+    pub crosses: u8,
+    pub shots: u8,
+    pub shots_on_target: u8,
+    pub goals: u8,
+    pub freekicks: u8,
+    pub penalties: u8,
+    pub corners: u8,
+    pub fouls: u8,
+    pub yellow_cards: Vec<u32>,
+    pub red_cards: Vec<u32>,
 }
 
 impl<'a> Game<'a> {
@@ -43,6 +43,13 @@ impl<'a> Game<'a> {
 
     pub fn play(&mut self) {
         self.play_half();
+    }
+
+    pub fn get_home_stats(&self) -> GameStats {
+        self.home_stats.to_owned()
+    }
+    pub fn get_away_stats(&self) -> GameStats {
+        self.away_stats.to_owned()
     }
 
     fn play_half(&mut self) {
@@ -226,6 +233,7 @@ impl<'a> Game<'a> {
     /// - existing cards
     ///
     fn get_fouls(&self, team: &squad::Squad, stats: &GameStats) -> (u8, Vec<u32>, Vec<u32>) {
+        let mut rng = self.rng.write().unwrap();
         let mut fouls: f32 = 0.0;
         let mut yellow_cards: Vec<u32> = Vec::new();
         let mut red_cards: Vec<u32> = Vec::new();
@@ -240,12 +248,10 @@ impl<'a> Game<'a> {
             player_foul += u8::MAX as f32 / player.decision_making as f32 * 0.4;
             player_foul += team.tactics.aggression as f32 / player.tackling as f32 * 0.1;
             // yellow_card rate
-            let mut rng = self.rng.write().unwrap();
             if rng.gen_bool((player_foul * 0.001) as f64) {
                 yellow_cards.push(player.id);
             };
             // red card rate
-            let mut rng = self.rng.write().unwrap();
             if rng.gen_bool((player_foul * 0.0005) as f64) {
                 red_cards.push(player.id);
             };
@@ -282,7 +288,7 @@ impl<'a> Game<'a> {
             shots *= 1.5;
         }
 
-        shots *= self.rng.write().unwrap().gen_range(0.5..1.3) * 10.0;
+        shots *= rng.gen_range(0.5..1.3) * 10.0;
 
         let mut total = shots.round() as u8;
 
@@ -302,7 +308,7 @@ impl<'a> Game<'a> {
         stats: &GameStats,
     ) -> u8 {
         let mut rng = self.rng.write().unwrap();
-        let mut shooting_acc = 0.0;
+        let mut shooting_acc = 0.01;
         let mut i = 0;
         for p in players {
             let multiplier = match p.position {
@@ -324,10 +330,16 @@ impl<'a> Game<'a> {
             shooting_acc *= 0.8;
         }
 
+        shooting_acc *= 0.01;
+
         let mut total = 0;
         for _ in 0..stats.shots {
             let rnd = rng.gen_range(0.8..1.3);
-            if rng.gen_bool(shooting_acc as f64 * rnd) {
+            let mut chance = shooting_acc as f64 * rnd;
+            if chance >= 1.0 {
+                chance = 0.99;
+            }
+            if rng.gen_bool(chance) {
                 total += 1;
             }
         }
@@ -414,7 +426,10 @@ impl<'a> Game<'a> {
 
         let corners: u8 = rng.gen_range(0..corner_rate.round() as u8);
 
-        let freekicks: u8 = rng.gen_range(opp_stats.yellow_cards.len() as u8..opp_stats.fouls);
+        let mut freekicks: u8 = 0;
+        if opp_stats.fouls > 0 {
+            freekicks = rng.gen_range(opp_stats.yellow_cards.len() as u8..opp_stats.fouls);
+        }
 
         let penalties: f32 = opp_stats.fouls as f32 * rng.gen_range(0.01..0.1);
 
