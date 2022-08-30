@@ -1,7 +1,7 @@
-mod game;
-mod manager;
-mod player;
-mod position;
-mod squad;
-mod style;
-mod tactics;
+pub mod game;
+pub mod manager;
+pub mod player;
+pub mod position;
+pub mod squad;
+pub mod style;
+pub mod tactics;
