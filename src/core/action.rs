@@ -3,6 +3,7 @@
 /// e.g. pass with 0.95 means a threatening pass (killer pass that will probably result in a shot on goal)
 /// e.g. shoot with 0.96 means shooting from a very dangerous distance/position
 /// e.g. dribble with 0.3 means dribbling from a relatively safe position
+#[derive(Clone, Copy)]
 pub enum Action {
     // with ball
     Pass(u32, f32), // player with higher creativity can produce passes with higher threat score
