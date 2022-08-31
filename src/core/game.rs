@@ -278,6 +278,31 @@ impl<'a> Game<'a> {
     }
 
     fn get_fieldzone(&self, team: &squad::Squad) -> field::FieldZone {
+        // central: 20,50,20->10  , balanced: 30,30,30->10,  left: 50,30,10 -> 10  right: 10,30,50 -> 10
+        // central: 1,3,8,10 ,  balanced: 1,4,7,10    left: 1,6,9,10, right:   1,2,5,10
+        let mut rng = self.rng.write().unwrap();
+        let rnd = rng.gen_range(1u8..10);
+
+        let rate: [u8; 4];
+        match team.tactics.attack_width {
+            tactics::Width::Left => rate = [1, 6, 9, 10],
+            tactics::Width::Central => rate = [1, 3, 8, 10],
+            tactics::Width::Right => rate = [1, 2, 5, 10],
+            tactics::Width::Balanced => rate = [1, 4, 7, 10],
+        }
+
+        let zone_map = [
+            field::FieldZone::Box,
+            field::FieldZone::Left,
+            field::FieldZone::Center,
+            field::FieldZone::Right,
+        ];
+
+        for (i, r) in rate.iter().enumerate() {
+            if rnd <= *r {
+                return zone_map[i];
+            }
+        }
         field::FieldZone::Center
     }
 
