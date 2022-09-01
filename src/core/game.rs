@@ -19,7 +19,7 @@ pub struct Game<'a> {
     away_stats: GameStats,
     home_actions: Vec<(&'a player::Player, action::Action)>,
     away_actions: Vec<(&'a player::Player, action::Action)>,
-    events: Vec<event::Event>,
+    events: Vec<(event::Event, u8)>,
     rng: Arc<RwLock<ThreadRng>>,
 }
 
@@ -53,9 +53,9 @@ impl<'a> Game<'a> {
     }
 
     pub fn play(&mut self) {
-        self.play_half();
+        self.play_half(0);
         self.halftime();
-        self.play_half();
+        self.play_half(45);
     }
 
     pub fn get_home_stats(&self) -> GameStats {
@@ -67,7 +67,7 @@ impl<'a> Game<'a> {
 
     fn halftime(&mut self) {}
 
-    fn play_half(&mut self) {
+    fn play_half(&mut self, mins: u8) {
         let mut events = vec![];
         let (mut home_stats, mut away_stats) = (GameStats::default(), GameStats::default());
         // carry over stats
@@ -93,7 +93,7 @@ impl<'a> Game<'a> {
         {
             let mut home_touches = 0;
             let mut away_touches = 0;
-            for _ in 0..45 {
+            for min in mins..mins + 45 {
                 // manager make tactics change/subs
                 // get team with possession
                 let (home_poss, _) = self.get_poss(
@@ -143,24 +143,15 @@ impl<'a> Game<'a> {
                                 opp_players.clone().into_iter(),
                             ) {
                                 // action fail
-                                println!(
-                                    "{}: {} [zone: {},threat: {}](Fail)",
-                                    player.name, action, zone, threat
-                                );
                                 break;
                             };
                             // action success
-                            println!(
-                                "{}: {} [zone:{}, threat: {}](Success)",
-                                player.name, action, zone, threat
-                            );
-                            if let Some(ev) = self.get_event_from_action(&action) {
+                            if let Some(ev) = self.get_event_from_action(player, &action) {
                                 // has event
-                                events.push(ev);
+                                events.push((ev, min));
                             };
                         } else {
                             // no actions
-                            println!("{}: No action", player.name);
                             break;
                         }
                     }
@@ -209,6 +200,10 @@ impl<'a> Game<'a> {
 
     fn get_action(&self) -> Option<action::Action> {
         None
+    }
+
+    pub fn get_events(&self) -> Vec<(event::Event, u8)> {
+        self.events.clone()
     }
 
     fn get_players(
@@ -827,14 +822,17 @@ impl<'a> Game<'a> {
         };
 
         let mut rng = self.rng.write().unwrap();
-        if rng.gen_bool(threat as f64 / (threat + def_score) as f64) {
-            // action success
-            return true;
-        };
-        false
+        rng.gen_bool(threat as f64 * 0.15 / (threat + def_score) as f64)
     }
 
-    fn get_event_from_action(&self, action: &action::Action) -> Option<event::Event> {
-        None
+    fn get_event_from_action(
+        &self,
+        player: &player::Player,
+        action: &action::Action,
+    ) -> Option<event::Event> {
+        match action {
+            action::Action::Shoot => Some(event::Event::Goal(player.id, None)),
+            _ => None,
+        }
     }
 }
