@@ -120,9 +120,11 @@ impl<'a> Game<'a> {
                 // enter action loop
                 {
                     let mut prev_action = None;
+                    let mut prev_zone = None;
                     loop {
                         // get field zone
-                        let zone = self.get_fieldzone(team);
+                        let zone = self.get_fieldzone(team, prev_action, prev_zone);
+                        prev_zone = Some(zone);
                         // get player with ball
                         let player = self.get_player_with_ball(players.clone().into_iter(), &zone);
                         if let Some((action, threat)) = self.get_player_next_action(
@@ -158,6 +160,7 @@ impl<'a> Game<'a> {
                             };
                         } else {
                             // no actions
+                            println!("{}: No action", player.name);
                             break;
                         }
                     }
@@ -288,33 +291,95 @@ impl<'a> Game<'a> {
         recyc + tact + mov + ret + press + tech + team_tactics
     }
 
-    fn get_fieldzone(&self, team: &squad::Squad) -> field::FieldZone {
+    fn get_fieldzone(
+        &self,
+        team: &squad::Squad,
+        prev_action: Option<(action::Action, f32)>,
+        prev_zone: Option<field::FieldZone>,
+    ) -> field::FieldZone {
         // central: 20,50,20->10  , balanced: 30,30,30->10,  left: 50,30,10 -> 10  right: 10,30,50 -> 10
         // central: 1,3,8,10 ,  balanced: 1,4,7,10    left: 1,6,9,10, right:   1,2,5,10
         let mut rng = self.rng.write().unwrap();
-        let rnd = rng.gen_range(1u8..10);
 
-        let rate: [u8; 4];
-        match team.tactics.attack_width {
-            tactics::Width::Left => rate = [1, 6, 9, 10],
-            tactics::Width::Central => rate = [1, 3, 8, 10],
-            tactics::Width::Right => rate = [1, 2, 5, 10],
-            tactics::Width::Balanced => rate = [1, 4, 7, 10],
-        }
+        let mut zone_map = HashMap::new();
 
-        let zone_map = [
-            field::FieldZone::Box,
-            field::FieldZone::Left,
-            field::FieldZone::Center,
-            field::FieldZone::Right,
-        ];
-
-        for (i, r) in rate.iter().enumerate() {
-            if rnd <= *r {
-                return zone_map[i];
+        // tactics
+        {
+            match team.tactics.attack_width {
+                tactics::Width::Left => {
+                    zone_map.insert(field::FieldZone::Box, 0.1);
+                    zone_map.insert(field::FieldZone::Left, 0.5);
+                    zone_map.insert(field::FieldZone::Center, 0.3);
+                    zone_map.insert(field::FieldZone::Right, 0.1);
+                }
+                tactics::Width::Central => {
+                    zone_map.insert(field::FieldZone::Box, 0.1);
+                    zone_map.insert(field::FieldZone::Left, 0.2);
+                    zone_map.insert(field::FieldZone::Center, 0.5);
+                    zone_map.insert(field::FieldZone::Right, 0.2);
+                }
+                tactics::Width::Right => {
+                    zone_map.insert(field::FieldZone::Box, 0.1);
+                    zone_map.insert(field::FieldZone::Left, 0.1);
+                    zone_map.insert(field::FieldZone::Center, 0.3);
+                    zone_map.insert(field::FieldZone::Right, 0.5);
+                }
+                tactics::Width::Balanced => {
+                    zone_map.insert(field::FieldZone::Box, 0.1);
+                    zone_map.insert(field::FieldZone::Left, 0.3);
+                    zone_map.insert(field::FieldZone::Center, 0.3);
+                    zone_map.insert(field::FieldZone::Right, 0.3);
+                }
+            };
+            // pass range
+            if let Some(pz) = prev_zone {
+                for (z, v) in zone_map.iter_mut() {
+                    if *z == pz {
+                        *v *= (1.0 / team.tactics.pass_range as f32) * 2.0 + 1.0;
+                    }
+                }
             }
         }
-        field::FieldZone::Center
+
+        // prev action
+        {
+            if let Some((p_a, threat)) = prev_action {
+                match p_a {
+                    action::Action::Cross => {
+                        *zone_map.get_mut(&field::FieldZone::Box).unwrap() *= 5.0 + threat * 0.1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        // prev zone
+        {
+            if let Some(pz) = prev_zone {
+                *zone_map.get_mut(&pz).unwrap() *= 0.8;
+            }
+        }
+
+        let mut total_probs = 0.0;
+        for (_, v) in zone_map.iter() {
+            total_probs += v;
+        }
+        let mut zone_probs = zone_map
+            .iter()
+            .map(|(a, p)| (*a, *p))
+            .collect::<Vec<(field::FieldZone, f32)>>();
+        zone_probs.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+        let rnd = rng.gen_range(0.0..total_probs);
+        let mut x = 0.0;
+        let mut retme = zone_probs[0].0;
+        for (fz, p) in zone_probs {
+            if rnd <= (x + p) {
+                retme = fz;
+                break;
+            }
+            x += p;
+        }
+        retme
     }
 
     fn get_defensive_player(
@@ -580,6 +645,7 @@ impl<'a> Game<'a> {
                 }
                 field::FieldZone::Box => {
                     act_map.insert(action::Action::Shoot, 1.0);
+                    act_map.insert(action::Action::Cross, 0.1);
                 }
             };
         }
@@ -646,13 +712,23 @@ impl<'a> Game<'a> {
             if prob <= (*s + x) {
                 // get threat score
                 let mut threat = match a {
-                    action::Action::Shoot => {
-                        (player.shooting as f32
-                            + player.decision_making as f32
-                            + player.attack_positioning as f32 * 0.8)
-                            / 2.0
-                            * *s
-                    }
+                    action::Action::Shoot => match zone {
+                        field::FieldZone::Box => {
+                            (player.shooting as f32
+                                + player.decision_making as f32
+                                + player.attack_positioning as f32 * 0.8)
+                                / 3.0
+                                * *s
+                        }
+                        _ => {
+                            (player.shooting as f32 * 0.7
+                                + player.long_shots as f32 * 2.0
+                                + player.decision_making as f32 * 0.8
+                                + player.attack_positioning as f32 * 0.6)
+                                / 4.0
+                                * *s
+                        }
+                    },
                     action::Action::Pass => {
                         (player.passing as f32
                             + player.decision_making as f32
