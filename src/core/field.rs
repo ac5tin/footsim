@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum FieldZone {
     Left,
     Right,

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use rand::{rngs::ThreadRng, thread_rng, Rng};
+use strum::IntoEnumIterator;
 
 use super::action;
 use super::event;
@@ -124,15 +125,14 @@ impl<'a> Game<'a> {
                 {
                     let mut prev_action = None;
                     loop {
-                        if let Some(action) = self.get_player_next_action(
+                        if let Some((action, threat)) = self.get_player_next_action(
                             prev_action,
                             player,
                             &zone,
                             &self.home.tactics,
-                            players.clone().into_iter(),
                         ) {
                             // has action, check if action can be executed
-                            prev_action = Some(action);
+                            prev_action = Some((action, threat));
                             if !self.action_success(
                                 &action,
                                 player,
@@ -440,12 +440,99 @@ impl<'a> Game<'a> {
 
     fn get_player_next_action(
         &self,
-        prev_action: Option<action::Action>,
+        prev_action: Option<(action::Action, f32)>,
         player: &player::Player,
         zone: &field::FieldZone,
         tactics: &tactics::Tactics,
-        players: impl Iterator<Item = &'a &'a player::Player>,
-    ) -> Option<action::Action> {
+    ) -> Option<(action::Action, f32)> {
+        let mut rng = self.rng.write().unwrap();
+        let mut act_map = HashMap::new();
+        for a in action::Action::iter() {
+            // more random actions if decision making is low / stamina is low
+            let base = rng.gen_range(0.2..(1.0 / player.decision_making as f32) + 0.2);
+            act_map.insert(a, base);
+        }
+        // position + zone
+        {
+            match zone {
+                field::FieldZone::Left | field::FieldZone::Right => {
+                    act_map.insert(action::Action::Cross, 0.9);
+                    act_map.insert(action::Action::Dribble, 0.7);
+                }
+                field::FieldZone::Center => {
+                    act_map.insert(action::Action::Pass, 1.0);
+                }
+                field::FieldZone::Box => {
+                    act_map.insert(action::Action::Shoot, 1.0);
+                }
+            };
+        }
+        // playstyle
+        {
+            match player.playstyle {
+                style::PlayStyle::Wide => {
+                    *act_map.get_mut(&action::Action::Cross).unwrap() *= 1.3;
+                }
+                style::PlayStyle::Inverted => {
+                    *act_map.get_mut(&action::Action::Cross).unwrap() *= 0.7;
+                    *act_map.get_mut(&action::Action::Pass).unwrap() *= 1.3;
+                    *act_map.get_mut(&action::Action::Dribble).unwrap() *= 1.1;
+                }
+                style::PlayStyle::False9 => {
+                    *act_map.get_mut(&action::Action::Dribble).unwrap() *= 1.3;
+                    *act_map.get_mut(&action::Action::Shoot).unwrap() *= 0.8;
+                    *act_map.get_mut(&action::Action::Pass).unwrap() *= 1.1;
+                }
+                style::PlayStyle::CutInside => {
+                    *act_map.get_mut(&action::Action::Dribble).unwrap() *= 1.3;
+                    *act_map.get_mut(&action::Action::Cross).unwrap() *= 0.6;
+                }
+                style::PlayStyle::Playmaker | style::PlayStyle::BallPlaying => {
+                    *act_map.get_mut(&action::Action::Pass).unwrap() *= 1.5;
+                }
+                _ => {}
+            };
+        }
+
+        // tactics
+        {
+            if tactics.shoot_more_often {
+                *act_map.get_mut(&action::Action::Shoot).unwrap() *= 1.3;
+            }
+            if tactics.cross_more_often {
+                *act_map.get_mut(&action::Action::Cross).unwrap() *= 1.3;
+            }
+        }
+        // prev action
+        {
+            match prev_action {
+                Some((action::Action::Cross, _)) => {
+                    *act_map.get_mut(&action::Action::Shoot).unwrap() *= 1.5;
+                }
+                _ => {}
+            }
+        }
+        // highest probability
+        let mut total_prob = 0.0;
+        for (_, p) in act_map.iter() {
+            total_prob += *p;
+        }
+        // find player with highest probability from list
+        let mut players_prob = act_map
+            .iter()
+            .map(|(a, p)| (*a, *p))
+            .collect::<Vec<(action::Action, f32)>>();
+        players_prob.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap()); // sort list in ascending order
+
+        let prob = rng.gen_range(0.0..total_prob);
+        let mut x = 0.0;
+        for (a, s) in players_prob.iter() {
+            if prob <= (*s + x) {
+                return Some((*a, *s));
+            }
+            x += *s;
+        }
+
         None
     }
 
