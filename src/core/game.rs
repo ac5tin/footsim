@@ -117,14 +117,14 @@ impl<'a> Game<'a> {
                     opp_players = home_players.clone().into_iter();
                     away_touches += 1;
                 }
-                // get field zone
-                let zone = self.get_fieldzone(team);
-                // get player with ball
-                let player = self.get_player_with_ball(players.clone().into_iter(), &zone);
                 // enter action loop
                 {
                     let mut prev_action = None;
                     loop {
+                        // get field zone
+                        let zone = self.get_fieldzone(team);
+                        // get player with ball
+                        let player = self.get_player_with_ball(players.clone().into_iter(), &zone);
                         if let Some((action, threat)) = self.get_player_next_action(
                             prev_action,
                             player,
@@ -135,14 +135,23 @@ impl<'a> Game<'a> {
                             prev_action = Some((action, threat));
                             if !self.action_success(
                                 &action,
+                                threat,
                                 player,
                                 &zone,
                                 opp_players.clone().into_iter(),
                             ) {
                                 // action fail
+                                println!(
+                                    "{}: {} [zone: {},threat: {}](Fail)",
+                                    player.name, action, zone, threat
+                                );
                                 break;
                             };
                             // action success
+                            println!(
+                                "{}: {} [zone:{}, threat: {}](Success)",
+                                player.name, action, zone, threat
+                            );
                             if let Some(ev) = self.get_event_from_action(&action) {
                                 // has event
                                 events.push(ev);
@@ -411,8 +420,6 @@ impl<'a> Game<'a> {
             }
             x += *s;
         }
-
-        println!("Defensive player: {:?} [zone: {}]", ret_player.name, zone);
         ret_player
     }
 
@@ -685,11 +692,7 @@ impl<'a> Game<'a> {
                         threat += (t + threat) / 2.0;
                     }
                 }
-                println!(
-                    "{}: {:?} [prev:{:#?},zone: {:#?}, threat: {}]",
-                    player.name, a, prev_action, zone, threat
-                );
-                return Some((*a, *s));
+                return Some((*a, threat));
             }
             x += *s;
         }
@@ -700,11 +703,58 @@ impl<'a> Game<'a> {
     fn action_success(
         &self,
         action: &action::Action,
+        threat: f32,
         player: &player::Player,
         zone: &field::FieldZone,
         opp_players: impl Iterator<Item = &'a &'a player::Player>,
     ) -> bool {
-        self.get_defensive_player(opp_players, zone);
+        let def_score;
+        if *action == action::Action::Shoot {
+            // goalkeeper
+            let def_player = opp_players
+                .filter(|p| p.position == position::Position::Goalkeeper)
+                .next()
+                .unwrap();
+            def_score = (def_player.goalkeeping as f32
+                + def_player.defensive_positioning as f32 * 0.7
+                + def_player.height as f32 * 0.6
+                + def_player.decision_making as f32 * 0.6)
+                / 4.0;
+        } else {
+            let def_player = &self.get_defensive_player(opp_players, zone);
+            def_score = match zone {
+                field::FieldZone::Box => {
+                    (def_player.defensive_positioning as f32
+                        + def_player.height as f32 * 0.7
+                        + def_player.strength as f32 * 0.8
+                        + def_player.jumping as f32 * 0.75
+                        + def_player.heading as f32 * 0.85)
+                        / 5.0
+                }
+                field::FieldZone::Left | field::FieldZone::Right => {
+                    (def_player.defensive_positioning as f32 * 0.9
+                        + def_player.pace as f32 * 0.8
+                        + def_player.tackling as f32 * 0.9
+                        + def_player.decision_making as f32 * 0.7
+                        + def_player.stamina as f32 * 0.6)
+                        / 5.0
+                }
+                field::FieldZone::Center => {
+                    (def_player.defensive_positioning as f32 * 1.0
+                        + def_player.pace as f32 * 0.6
+                        + def_player.tackling as f32 * 0.9
+                        + def_player.decision_making as f32 * 0.8
+                        + def_player.stamina as f32 * 0.7)
+                        / 5.0
+                }
+            }
+        };
+
+        let mut rng = self.rng.write().unwrap();
+        if rng.gen_bool(threat as f64 / (threat + def_score) as f64) {
+            // action success
+            return true;
+        };
         false
     }
 

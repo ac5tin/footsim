@@ -1,5 +1,6 @@
 use super::{position, style};
 
+#[derive(Debug)]
 pub struct Player {
     pub id: u32,
     pub name: String,

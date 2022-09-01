@@ -13,3 +13,14 @@ pub enum Action {
     Cross,   // threat score of the cross
     Dribble, // higher thread score = dribbling into a dangerous position (e.g. in the box)
 }
+
+impl std::fmt::Display for Action {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Action::Pass => write!(f, "Pass"),
+            Action::Shoot => write!(f, "Shoot"),
+            Action::Cross => write!(f, "Cross"),
+            Action::Dribble => write!(f, "Dribble"),
+        }
+    }
+}
