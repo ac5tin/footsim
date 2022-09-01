@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::RwLock;
 
@@ -311,10 +312,130 @@ impl<'a> Game<'a> {
         players: impl Iterator<Item = &'a &'a player::Player>,
         zone: &field::FieldZone,
     ) -> &'a player::Player {
+        let mut rng = self.rng.write().unwrap();
+        let mut players_prob = vec![];
+        let mut total_prob = 0.0;
         for &p in players {
-            return p;
+            let mut zone_prob = HashMap::new();
+            match p.playstyle {
+                style::PlayStyle::False9 => {
+                    zone_prob.insert(field::FieldZone::Box, 0.7);
+                    zone_prob.insert(field::FieldZone::Center, 1.3);
+                }
+                style::PlayStyle::Inverted => {
+                    zone_prob.insert(field::FieldZone::Left, 0.7);
+                    zone_prob.insert(field::FieldZone::Right, 0.7);
+                    zone_prob.insert(field::FieldZone::Center, 1.3);
+                }
+                style::PlayStyle::Wide => {
+                    zone_prob.insert(field::FieldZone::Left, 1.3);
+                    zone_prob.insert(field::FieldZone::Right, 1.3);
+                    zone_prob.insert(field::FieldZone::Center, 0.7);
+                }
+                style::PlayStyle::BoxToBox => {
+                    zone_prob.insert(field::FieldZone::Center, 1.3);
+                    zone_prob.insert(field::FieldZone::Box, 1.3);
+                }
+                _ => {}
+            }
+            let base_prob = match p.position {
+                position::Position::Goalkeeper => {
+                    // goalkeeper will only operate in center
+                    match zone {
+                        field::FieldZone::Center => 0.1,
+                        _ => 0.0,
+                    }
+                }
+                position::Position::CenterBack => match zone {
+                    field::FieldZone::Center => 0.2,
+                    _ => 0.1,
+                },
+                position::Position::LeftBack | position::Position::LeftWingBack => match zone {
+                    field::FieldZone::Left => 0.7,
+                    field::FieldZone::Right => 0.01,
+                    _ => 0.2,
+                },
+                position::Position::RightBack | position::Position::RightWingBack => match zone {
+                    field::FieldZone::Right => 0.7,
+                    field::FieldZone::Left => 0.01,
+                    _ => 0.2,
+                },
+
+                position::Position::LeftMidfield => match zone {
+                    field::FieldZone::Left => 0.9,
+                    field::FieldZone::Right => 0.01,
+                    _ => 0.2,
+                },
+                position::Position::RightMidfield => match zone {
+                    field::FieldZone::Left => 0.01,
+                    field::FieldZone::Right => 0.9,
+                    _ => 0.2,
+                },
+
+                position::Position::DefensiveMidfield | position::Position::CenterMidfield => {
+                    match zone {
+                        field::FieldZone::Center => 0.9,
+                        _ => 0.2,
+                    }
+                }
+                position::Position::AttackingMidfield => match zone {
+                    field::FieldZone::Center => 0.9,
+                    field::FieldZone::Box => 0.5,
+                    _ => 0.2,
+                },
+
+                position::Position::LeftWing => match zone {
+                    field::FieldZone::Left => 0.7,
+                    field::FieldZone::Box => 0.5,
+                    field::FieldZone::Right => 0.01,
+                    _ => 0.2,
+                },
+                position::Position::RightWing => match zone {
+                    field::FieldZone::Left => 0.01,
+                    field::FieldZone::Box => 0.5,
+                    field::FieldZone::Right => 0.7,
+                    _ => 0.2,
+                },
+
+                position::Position::Striker => match zone {
+                    field::FieldZone::Box => 0.9,
+                    _ => 0.2,
+                },
+            };
+            let prob = base_prob
+                * zone_prob.get(zone).unwrap_or(&1.0)
+                * rng.gen_range(0.8..1.2)
+                * (p.attack_positioning as f32 * 0.9
+                    + p.defensive_positioning as f32 * 0.8
+                    + p.tactical as f32 * 0.8
+                    + p.decision_making as f32 * 0.8
+                    + p.stamina as f32 * 0.5
+                    + p.technique as f32 * 0.7
+                    + p.passing as f32 * 0.7
+                    + p.vision as f32 * 0.6
+                    + p.strength as f32 * 0.5
+                    + p.pace as f32 * 0.4
+                    + p.tackling as f32 * 0.4)
+                / 11.0;
+            players_prob.push((p, prob));
+            total_prob += prob;
         }
-        panic!("no players")
+
+        // find player with highest probability from list
+        players_prob.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap()); // sort list in ascending order
+        let rnd = rng.gen_range(0.0..total_prob);
+
+        let mut x = 0.0;
+        let mut ret_player = players_prob[0].0;
+        for (p, s) in players_prob.iter() {
+            if rnd <= (*s + x) {
+                ret_player = p;
+                break;
+            }
+            x += *s;
+        }
+
+        ret_player
     }
 
     fn get_player_next_action(
