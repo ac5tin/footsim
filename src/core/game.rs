@@ -528,6 +528,58 @@ impl<'a> Game<'a> {
         let mut x = 0.0;
         for (a, s) in players_prob.iter() {
             if prob <= (*s + x) {
+                // get threat score
+                let mut threat = match a {
+                    action::Action::Shoot => {
+                        (player.shooting as f32
+                            + player.decision_making as f32
+                            + player.attack_positioning as f32 * 0.8)
+                            / 2.0
+                            * *s
+                    }
+                    action::Action::Pass => {
+                        (player.passing as f32
+                            + player.decision_making as f32
+                            + player.vision as f32
+                            + player.creativity as f32)
+                            / 4.0
+                            * *s
+                    }
+                    action::Action::Dribble => {
+                        (player.technique as f32
+                            + player.decision_making as f32
+                            + player.pace as f32
+                            + player.strength as f32 * 0.7)
+                            / 4.0
+                            * *s
+                    }
+
+                    action::Action::Cross => {
+                        (player.passing as f32
+                            + player.decision_making as f32 * 0.7
+                            + player.vision as f32)
+                            / 3.0
+                            * *s
+                    }
+                };
+                // addition
+                {
+                    if *zone == field::FieldZone::Box
+                        && prev_action.is_some()
+                        && prev_action.unwrap().0 == action::Action::Cross
+                    {
+                        let t = (player.heading as f32
+                            + player.height as f32
+                            + player.strength as f32
+                            + player.jumping as f32)
+                            / 4.0;
+                        threat += (t + threat) / 2.0;
+                    }
+                }
+                println!(
+                    "{}: {:?} [prev:{:#?},zone: {:#?}, threat: {}]",
+                    player.name, a, prev_action, zone, threat
+                );
                 return Some((*a, *s));
             }
             x += *s;
