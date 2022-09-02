@@ -77,9 +77,6 @@ impl<'a> Game<'a> {
             away_stats.yellow_cards = self.away_stats.yellow_cards.clone();
             home_stats.red_cards = self.home_stats.red_cards.clone();
             away_stats.red_cards = self.away_stats.red_cards.clone();
-            // goals
-            home_stats.goals = self.home_stats.goals;
-            away_stats.goals = self.away_stats.goals;
         }
         // get players
         let home_players = self
@@ -106,16 +103,19 @@ impl<'a> Game<'a> {
                 let team;
                 let players;
                 let opp_players;
+                let stats;
                 if self.rng.write().unwrap().gen_bool(home_poss as f64 * 0.01) {
                     team = &self.home;
                     players = home_players.clone().into_iter();
                     opp_players = away_players.clone().into_iter();
                     home_touches += 1;
+                    stats = &mut home_stats;
                 } else {
                     team = &self.away;
                     players = away_players.clone().into_iter();
                     opp_players = home_players.clone().into_iter();
                     away_touches += 1;
+                    stats = &mut away_stats;
                 }
                 // enter action loop
                 {
@@ -133,6 +133,7 @@ impl<'a> Game<'a> {
                             &zone,
                             &self.home.tactics,
                         ) {
+                            self.update_stats_from_action(stats, &action, false);
                             // has action, check if action can be executed
                             prev_action = Some((action, threat));
                             if !self.action_success(
@@ -146,9 +147,15 @@ impl<'a> Game<'a> {
                                 break;
                             };
                             // action success
-                            if let Some(ev) = self.get_event_from_action(player, &action) {
+                            self.update_stats_from_action(stats, &action, true);
+                            if let Some(ev) = self.get_event_from_action(
+                                player,
+                                opp_players.clone().into_iter(),
+                                &action,
+                            ) {
                                 // has event
                                 events.push((ev, min));
+                                self.update_stats_from_event(stats, &ev);
                             };
                         } else {
                             // no actions
@@ -191,15 +198,6 @@ impl<'a> Game<'a> {
             // events
             self.events.extend(events);
         }
-    }
-
-    /// get an event
-    fn get_event(&self) -> Option<event::Event> {
-        None
-    }
-
-    fn get_action(&self) -> Option<action::Action> {
-        None
     }
 
     pub fn get_events(&self) -> Vec<(event::Event, u8)> {
@@ -779,60 +777,97 @@ impl<'a> Game<'a> {
         zone: &field::FieldZone,
         opp_players: impl Iterator<Item = &'a &'a player::Player>,
     ) -> bool {
-        let def_score;
-        if *action == action::Action::Shoot {
-            // goalkeeper
-            let def_player = opp_players
-                .filter(|p| p.position == position::Position::Goalkeeper)
-                .next()
-                .unwrap();
-            def_score = (def_player.goalkeeping as f32
-                + def_player.defensive_positioning as f32 * 0.7
-                + def_player.height as f32 * 0.6
-                + def_player.decision_making as f32 * 0.6)
-                / 4.0;
-        } else {
-            let def_player = &self.get_defensive_player(opp_players, zone);
-            def_score = match zone {
-                field::FieldZone::Box => {
-                    (def_player.defensive_positioning as f32
-                        + def_player.height as f32 * 0.7
-                        + def_player.strength as f32 * 0.8
-                        + def_player.jumping as f32 * 0.75
-                        + def_player.heading as f32 * 0.85)
-                        / 5.0
-                }
-                field::FieldZone::Left | field::FieldZone::Right => {
-                    (def_player.defensive_positioning as f32 * 0.9
-                        + def_player.pace as f32 * 0.8
-                        + def_player.tackling as f32 * 0.9
-                        + def_player.decision_making as f32 * 0.7
-                        + def_player.stamina as f32 * 0.6)
-                        / 5.0
-                }
-                field::FieldZone::Center => {
-                    (def_player.defensive_positioning as f32 * 1.0
-                        + def_player.pace as f32 * 0.6
-                        + def_player.tackling as f32 * 0.9
-                        + def_player.decision_making as f32 * 0.8
-                        + def_player.stamina as f32 * 0.7)
-                        / 5.0
-                }
+        let def_player = &self.get_defensive_player(opp_players, zone);
+        let def_score = match zone {
+            field::FieldZone::Box => {
+                (def_player.defensive_positioning as f32
+                    + def_player.height as f32 * 0.7
+                    + def_player.strength as f32 * 0.8
+                    + def_player.jumping as f32 * 0.75
+                    + def_player.heading as f32 * 0.85)
+                    / 5.0
+            }
+            field::FieldZone::Left | field::FieldZone::Right => {
+                (def_player.defensive_positioning as f32 * 0.9
+                    + def_player.pace as f32 * 0.8
+                    + def_player.tackling as f32 * 0.9
+                    + def_player.decision_making as f32 * 0.7
+                    + def_player.stamina as f32 * 0.6)
+                    / 5.0
+            }
+            field::FieldZone::Center => {
+                (def_player.defensive_positioning as f32 * 1.0
+                    + def_player.pace as f32 * 0.6
+                    + def_player.tackling as f32 * 0.9
+                    + def_player.decision_making as f32 * 0.8
+                    + def_player.stamina as f32 * 0.7)
+                    / 5.0
             }
         };
 
         let mut rng = self.rng.write().unwrap();
-        rng.gen_bool(threat as f64 * 0.15 / (threat + def_score) as f64)
+        rng.gen_bool(threat as f64 * 0.9 / (threat + def_score) as f64)
     }
 
     fn get_event_from_action(
         &self,
         player: &player::Player,
+        opp_players: impl Iterator<Item = &'a &'a player::Player>,
         action: &action::Action,
     ) -> Option<event::Event> {
+        let mut rng = self.rng.write().unwrap();
         match action {
-            action::Action::Shoot => Some(event::Event::Goal(player.id, None)),
+            action::Action::Shoot => {
+                let gk = opp_players
+                    .filter(|p| p.position == position::Position::Goalkeeper)
+                    .next()
+                    .unwrap();
+                let gk_score = (gk.goalkeeping as f32
+                    + gk.defensive_positioning as f32 * 0.75
+                    + gk.height as f32 * 0.7
+                    + gk.strength as f32 * 0.7
+                    + gk.jumping as f32 * 0.75)
+                    / 5.0
+                    * 2.0;
+
+                if rng
+                    .gen_bool((player.shooting as f64) / (player.shooting as f64 + gk_score as f64))
+                {
+                    Some(event::Event::Goal(player.id, None))
+                } else {
+                    None
+                }
+            }
             _ => None,
+        }
+    }
+
+    fn update_stats_from_action(
+        &self,
+        stats: &mut GameStats,
+        action: &action::Action,
+        success: bool,
+    ) {
+        match action {
+            action::Action::Shoot => {
+                stats.shots += 1;
+                if success {
+                    stats.shots_on_target += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn update_stats_from_event(&self, stats: &mut GameStats, event: &event::Event) {
+        match event {
+            event::Event::Goal(_, _) => {
+                stats.goals += 1;
+            }
+            event::Event::Foul(_, _) => {
+                stats.fouls += 1;
+            }
+            _ => {}
         }
     }
 }
