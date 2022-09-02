@@ -2,6 +2,7 @@
 #[derive(Clone, Copy)]
 pub enum Event {
     Offside(u32),
+    Injured(u32),
     Foul(u32, f32), // player id and foul severity
     YellowCard(u32),
     RedCard(u32),
@@ -18,6 +19,7 @@ impl std::fmt::Display for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Event::Offside(id) => write!(f, "Offside: {}", id),
+            Event::Injured(id) => write!(f, "Injured: {}", id),
             Event::Foul(id, severity) => write!(f, "Foul: {} severity: {}", id, severity),
             Event::YellowCard(id) => write!(f, "Yellow card: {}", id),
             Event::RedCard(id) => write!(f, "Red card: {}", id),

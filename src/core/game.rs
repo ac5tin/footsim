@@ -200,6 +200,14 @@ impl<'a> Game<'a> {
         }
     }
 
+    fn get_random_event(
+        &self,
+        players: impl Iterator<Item = &'a &'a player::Player>,
+        zone: &field::FieldZone,
+    ) -> Option<event::Event> {
+        None
+    }
+
     pub fn get_events(&self) -> Vec<(event::Event, u8)> {
         self.events.clone()
     }
